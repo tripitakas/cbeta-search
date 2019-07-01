@@ -9,7 +9,7 @@
 
 ## 二、CBETA数据介绍
 
-CBETA简单标记版的数据放在Github上，链接为：https://github.com/mahawu/BM_u8。整个文本库大约1.69G，目录结构如下：
+CBETA简单标记版的数据放在Github上，链接为：[BM_u8](https://github.com/mahawu/BM_u8)。整个文本库大约1.69G，目录结构如下：
 
 ![BM_u8目录结构](./img/2.png)
 

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ES搜索</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="shortcut icon" href="{{ static_url('favicon.ico') }}" type="image/x-icon">
+  <script src="{{ static_url('js/jquery.min.js') }}"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+    }
+    .content {
+      padding: 10px;
+      font-size: 15px;
+    }
+    textarea {
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+<div class="content">
+  <textarea rows="10" placeholder="输入待匹配的OCR文本" id="ocr"></textarea>
+  <button id="search">搜索相似文本</button>
+  <textarea rows="10" readonly id="result" style="display: none; margin-top: 10px"></textarea>
+</div>
+<script>
+  $('#search').click(function () {
+    $.post('/search', {ocr: $('#ocr').val()}, function (res) {
+      $('#result').text(res).show();
+    });
+  });
+</script>
+</body>
+</html>

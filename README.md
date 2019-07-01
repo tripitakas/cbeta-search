@@ -23,3 +23,9 @@ T01n0001_p0001a03：T表示大正藏，n表示第几部经，p表示第几页，
 
 针对一页图像的OCR文本，从CBETA中找出与之相似的文本。
 值得考虑的是，在使用ES建索引的时候，如果OCR的文本正好分布在前后两个document中，应如何从前后两个document中拼出一份完整的比对本。
+
+## 四、安装
+
+先安装 Python 3.6+、[Elasticsearch][es]，然后运行 `pip install -r requirements.txt` 安装 Tornado 等依赖库。
+
+[es]: https://es.xiaoleilu.com/010_Intro/10_Installing_ES.html

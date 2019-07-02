@@ -22,9 +22,11 @@ class SearchHandler(RequestHandler):
 
 
 def make_app():
-    settings = dict(template_path='views',
-                    static_path='views',
-                    compiled_template_cache=False)
+    settings = dict(
+        template_path='views',
+        static_path='views',
+        compiled_template_cache=False
+    )
     return Application([
         ('/', MainHandler),
         ('/search', SearchHandler),

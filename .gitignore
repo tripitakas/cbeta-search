@@ -44,3 +44,5 @@ target/
 
 # Project Files
 BM_u8/
+
+.vscode/*

@@ -5,7 +5,10 @@
 from tornado.ioloop import IOLoop
 from tornado.web import RequestHandler, Application
 from tornado.options import define, options
-from search import search
+from search import build_db
+import docker
+import os
+import signal
 
 define('port', default=8020, help='run port', type=int)
 
@@ -32,8 +35,22 @@ def make_app():
         ('/search', SearchHandler),
     ], **settings)
 
+docker_client = docker.from_env()
+
+
+def stop_es_container():
+    for container in docker_client.containers.list():
+        container.stop()
+
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, stop_es_container)
+    # First, start elasticsearch container
+    docker_client.containers.run('chaopli/es-ik-tripitakas', detach=True)
+    print('Building elasticsearch index from ocr files')
+    build_db()
+
+    # Then start tornado IO loop
     options.parse_command_line()
     app = make_app()
     print('Start the app on http://localhost:%d' % (options.port,))

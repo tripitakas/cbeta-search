@@ -14,8 +14,8 @@ from rare import format_rare
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ElasticsearchException
 
-# TXT_PATH = r'/home/sm/cbeta/BM_u8'
-TXT_PATH = r'/Users/xiandu/Develop/BM_u8/T/T01'
+BM_PATH = r'/home/sm/cbeta/BM_u8'           # BM_u8所在路径
+TXT_PATH = r'/home/sm/cbeta/BM_u8/T/T01'    # 当前加工索引的路径
 
 
 def junk_filter(txt):
@@ -27,8 +27,9 @@ def junk_filter(txt):
 
 def add_page(index, rows, page_code):
     if rows:
-        origin = format_rare('\n'.join(rows))
-        normal = normalize(origin)
+        origin = [format_rare(r) for r in rows]
+        normal = [normalize(r) for r in origin]
+        count = sum(len(r) for r in normal)
 
         volume_no = book_no = page_no = None  # 册号，经号，页码
         head = re.search(r'^([A-Z]{1,2}\d+)n([A-Z]?\d+)[A-Za-z_]?p([a-z]?\d+)', page_code)
@@ -38,7 +39,7 @@ def add_page(index, rows, page_code):
         try:
             index(body=dict(
                 page_code=page_code, volume_no=volume_no, book_no=book_no, page_no=page_no,
-                origin=origin, normal=normal, lines=len(rows), char_count=len(origin), updated_time=datetime.now())
+                origin=origin, normal=normal, lines=len(rows), char_count=count, updated_time=datetime.now())
             )
             print('success:\t%s\t%s lines\t %s chars' % (page_code, len(rows), len(origin)))
             return True
@@ -50,7 +51,7 @@ def add_page(index, rows, page_code):
 def scan_and_index_dir(index, source):
     rows, errors, page_code = [], [], None
     for i, fn in enumerate(sorted(glob(path.join(source, '**', r'new.txt')))):
-        print('\n')
+        print('processing file %s' % fn)
         with open(fn, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         for row in lines:
@@ -62,6 +63,7 @@ def scan_and_index_dir(index, source):
                 if page_code and page_code != head.group(0):
                     if not add_page(index, rows, page_code):
                         errors.append(page_code)
+                    rows = []
                 page_code = head.group(0)
             else:
                 print('head error:\t%s' % row)
@@ -75,15 +77,16 @@ def scan_and_index_dir(index, source):
         print('%s error pages\n%s' % (len(errors), errors))
 
 
-def index_page_codes(index, fn):
+def index_page_codes(index, fn, base_dir=BM_PATH):
     with open(fn, 'r', encoding='utf-8') as f:
         page_codes = json.load(f)
     errors = []
     for page_code in page_codes:
-        from_file = ''
+        head = re.search(r'^([A-Z]{1,2})(\d+)n([A-Z]?\d+)[A-Za-z_]?p([a-z]?\d+)', page_code)
+        from_file = path.join(base_dir, head.group(1), head.group(1)+head.group(2), 'new.txt')
         with open(from_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-            rows = [re.split('#{1,3}', line.strip(), 1)[1] for line in lines if page_code in line]
+            rows = [junk_filter(re.split('#{1,3}', line.strip(), 1)[1]) for line in lines if page_code in line]
             if not add_page(index, rows, page_code):
                 errors.append(page_code)
 
@@ -93,7 +96,7 @@ def index_page_codes(index, fn):
         print('%s error pages\n%s' % (len(errors), errors))
 
 
-def build_db(index='cb4ocr', source=TXT_PATH, mode='create', split='ik'):
+def build_db(index='cb4ocr-ik', source=TXT_PATH, mode='create', split='ik'):
     """ 基于CBETA文本创建索引，以便ocr寻找比对文本使用
     :param index: 索引名称
     :param source: 待加工的数据来源，有两种：

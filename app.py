@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 # 网站服务的主文件
 
+import docker
+import signal
 from tornado.ioloop import IOLoop
 from tornado.web import RequestHandler, Application
 from tornado.options import define, options
 from search import build_db
-import docker
-import os
-import signal
+
 
 define('port', default=8020, help='run port', type=int)
 
@@ -20,7 +20,7 @@ class MainHandler(RequestHandler):
 
 class SearchHandler(RequestHandler):
     def post(self):
-        res = search(self.get_body_argument('ocr'));
+        res = self.get_body_argument('ocr')
         self.write(res)
 
 
@@ -34,6 +34,7 @@ def make_app():
         ('/', MainHandler),
         ('/search', SearchHandler),
     ], **settings)
+
 
 docker_client = docker.from_env()
 

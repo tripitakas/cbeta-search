@@ -2,3 +2,4 @@ tornado==5.0.2
 glob2
 elasticsearch
 docker
+fire

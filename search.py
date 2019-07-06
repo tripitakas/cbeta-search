@@ -3,124 +3,135 @@
 # nohup python3 /home/sm/tripitakas/controller/cbeta.py >> /home/sm/cbeta/cbeta.log 2>&1 &
 
 import re
+import sys
+import json
 from os import path
 from glob2 import glob
 from datetime import datetime
 from functools import partial
-import sys
-
-sys.path.append(path.dirname(path.dirname(__file__)))  # to use controller
-
+from variant import normalize
+from rare import format_rare
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ElasticsearchException
 
-BM_PATH = r'/home/sm/cbeta/BM_u8'
+# TXT_PATH = r'/home/sm/cbeta/BM_u8'
+TXT_PATH = r'/Users/xiandu/Develop/BM_u8/T/T01'
 
 
-def scan_txt(add, root_path):
-    def add_page():
-        if rows:
-            try:
-                page_code = '%sn%sp%s' % (volume_no, book_no, page_no - 1)
-                add(body=dict(page_code=page_code, book_no=book_no, page_no=page_no - 1, update_time=datetime.now(),
-                              rows=last_rows + rows, volume_no=volume_no))
-                print('processing %d file: %s\t%s\t%d lines' % (i + 1, page_code, fn, len(rows)))
-            except ElasticsearchException as e:
-                sys.stderr.write('fail to process file\t%d: %s\t%d lines\t%s\n' % (i + 1, fn, len(rows), str(e)))
+def junk_filter(txt):
+    txt = re.sub('<.*?>', '', txt)
+    txt = re.sub(r'\[.>(.)\]', lambda m: m.group(1), txt)
+    txt = re.sub(r'\[[\x00-\xff＊]*\]', '', txt)
+    return txt
 
-    volume_no = book_no = page_no = None  # 册号，经号，页码
-    rows, last_rows = [], []
-    for i, fn in enumerate(sorted(glob(path.join(root_path, '**',  r'new.txt')))):
+
+def add_page(index, rows, page_code):
+    if rows:
+        origin = format_rare('\n'.join(rows))
+        normal = normalize(origin)
+
+        volume_no = book_no = page_no = None  # 册号，经号，页码
+        head = re.search(r'^([A-Z]{1,2}\d+)n([A-Z]?\d+)[A-Za-z_]?p([a-z]?\d+)', page_code)
+        if head:
+            volume_no, book_no, page_no = head.group(1), int(head.group(2)), int(head.group(3))
+
+        try:
+            index(body=dict(
+                page_code=page_code, volume_no=volume_no, book_no=book_no, page_no=page_no,
+                origin=origin, normal=normal, lines=len(rows), char_count=len(origin), updated_time=datetime.now())
+            )
+            print('success:\t%s\t%s lines\t %s chars' % (page_code, len(rows), len(origin)))
+            return True
+        except ElasticsearchException as e:
+            sys.stderr.write('failed:\t%s\t%s lines\t %s chars\t%s' % (page_code, len(rows), len(origin), str(e)))
+            return False
+
+
+def scan_and_index_dir(index, source):
+    rows, errors, page_code = [], [], None
+    for i, fn in enumerate(sorted(glob(path.join(source, '**', r'new.txt')))):
+        print('\n')
         with open(fn, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         for row in lines:
             texts = re.split('#{1,3}', row.strip(), 1)
             if len(texts) != 2:
                 continue
-            head = re.search(r'^([A-Z]{1,2}\d+)n(\d+)[A-Za-z_]p(\d+)([abcd]\d+)', texts[0])
+            head = re.search(r'^([A-Z]{1,2}\d+)n([A-Z]?\d+)[A-Za-z_]?p([a-z]?\d+)', texts[0])
             if head:
-                volume, book, page = head.group(1), int(head.group(2)), int(head.group(3))
-                if [volume_no, book_no, page_no] != [volume, book, page]:
-                    add_page()
-                    volume_no, book_no, page_no = volume, book, page
-                    rows, last_rows = [], rows
-            content = re.sub(r'\[.>(.)\]', lambda m: m.group(1), texts[1])
-            content = re.sub(r'(<[\x00-\xff]*?>|\[[\x00-\xff＊]*\])', '', content)
-            rows.append(content)
-    add_page()
+                if page_code and page_code != head.group(0):
+                    if not add_page(index, rows, page_code):
+                        errors.append(page_code)
+                page_code = head.group(0)
+            else:
+                print('head error:\t%s' % row)
+            rows.append(junk_filter(texts[1]))
+    if not add_page(index, rows, page_code):
+        errors.append(page_code)
+
+    if errors:
+        with open(path.join(source, 'error-%s.json' % datetime.now().strftime('%Y-%m-%d-%H-%M'))) as f:
+            json.dump(errors, f)
+        print('%s error pages\n%s' % (len(errors), errors))
 
 
-def build_db(index='cbeta4ocr', root_path=None, jieba=False):
+def index_page_codes(index, fn):
+    with open(fn, 'r', encoding='utf-8') as f:
+        page_codes = json.load(f)
+    errors = []
+    for page_code in page_codes:
+        from_file = ''
+        with open(from_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            rows = [re.split('#{1,3}', line.strip(), 1)[1] for line in lines if page_code in line]
+            if not add_page(index, rows, page_code):
+                errors.append(page_code)
+
+    if errors:
+        with open(path.join(path.basename(fn), 'error-%s.json' % datetime.now().strftime('%Y-%m-%d-%H-%M'))) as f:
+            json.dump(errors, f)
+        print('%s error pages\n%s' % (len(errors), errors))
+
+
+def build_db(index='cb4ocr', source=TXT_PATH, mode='create', split='ik'):
+    """ 基于CBETA文本创建索引，以便ocr寻找比对文本使用
+    :param index: 索引名称
+    :param source: 待加工的数据来源，有两种：
+            1.目录：这种情况下直接导入目录中的文本数据
+            2.json文件：这种情况下根据json文件中指定的page_code页码重新导入
+    :param mode: 'create'表示新建，'update'表示更新
+    :param split: 中文分词器的名称，如'ik'或'jieba'，默认不采用任何分词
+    """
     es = Elasticsearch()
-    es.indices.delete(index=index, ignore=[400, 404])
-    es.indices.create(index=index, ignore=400)
-    if jieba:
-        mapping = {
-            'properties': {
-                'rows': {
-                    'type': 'text',
-                    'analyzer': 'ik_max_word',
-                    'search_analyzer': 'ik_smart'
-                }
-            }
-        }
+
+    if mode == 'create':
+        es.indices.delete(index=index, ignore=[400, 404])
+        es.indices.create(index=index, ignore=400)
+    else:
+        es.indices.open(index=index, ignore=400)
+
+    if split == 'ik':
+        mapping = {'properties': {'rows': {
+            'type': 'text',
+            'analyzer': 'ik_max_word',
+            'search_analyzer': 'ik_smart'
+        }}}
+        es.indices.put_mapping(index=index, body=mapping)
+    elif split == 'jieba':
+        mapping = {'properties': {'rows': {
+            'type': 'text',
+            'analyzer': 'jieba_index',
+            'search_analyzer': 'jieba_index'
+        }}}
         es.indices.put_mapping(index=index, body=mapping)
 
-    scan_txt(partial(es.index, index=index, ignore=[400, 404]), root_path or BM_PATH)
+    if '.json' in source:
+        index_page_codes(partial(es.index, index=index, ignore=[]), source)
+    else:
+        scan_and_index_dir(partial(es.index, index=index, ignore=[]), source)
 
 
-def pre_filter(txt):
-    return re.sub('[\x00-\xff]', '', txt)
+if __name__ == '__main__':
+    import fire
 
-
-def find(ocr):
-    if not ocr:
-        return []
-    match = {'page_code': ocr.replace('_', '')} if re.match(r'^[0-9a-zA-Z_]+', ocr) else {'rows': pre_filter(ocr)}
-    dsl = {
-        'query': {'match': match},
-        'highlight': {
-            'pre_tags': ['<kw>'],
-            'post_tags': ['</kw>'],
-            'fields': {'rows': {}}
-        }
-    }
-    host = [dict(host='47.95.216.233', port=9200), dict(host='localhost', port=9200)]
-    es = Elasticsearch(hosts=host)
-    r = es.search(index='cbeta4ocr', body=dsl)
-    return r['hits']['hits']
-
-
-def _find_one(ocr):
-    r = find(ocr)
-    if not r:
-        return ''
-    cb_doc = ''.join(r[0]['_source']['rows'])
-    ret = Diff.diff(ocr, cb_doc, label=dict(base='ocr', cmp1='cbeta'))[0]
-    is_same = [k for k, v in enumerate(ret) if v.get('is_same')]
-    ret[is_same[0]]['cbeta'] = '<start>' + ret[is_same[0]]['cbeta']
-    ret[is_same[-1]]['cbeta'] = ret[is_same[-1]]['cbeta'] + '<end>'
-    cb_doc = ''.join([r['cbeta'] for r in ret])
-    return cb_doc
-
-
-def find_one(ocr):
-    r = find(ocr)
-    if not r:
-        return ''
-    cb_doc = ''.join(r[0]['_source']['rows'])
-    ret = Diff.diff(ocr, cb_doc, label=dict(base='ocr', cmp1='cbeta'))[0]
-    is_same = [k for k, v in enumerate(ret) if v.get('is_same')]
-    ret[is_same[0]]['cbeta'] = '<start>' + ret[is_same[0]]['cbeta']
-    ret[is_same[-1]]['cbeta'] = ret[is_same[-1]]['cbeta'] + '<end>'
-    r = ''.join([r['cbeta'] for r in ret])
-
-    # 如果第一段异文中ocr失配的长度超过10，则重新检索
-    if not ret[0]['is_same'] and len(ret[0]['ocr']) > 10:
-        r = _find_one(ret[0]['ocr']) + r'\n' + r
-
-    # 如果最后一段异文中ocr失配的长度超过10，则重新检索
-    if not ret[-1]['is_same'] and len(ret[-1]['ocr']) > 10:
-        r = r + r'\n' + _find_one(ret[-1]['ocr'])
-
-    return r
+    fire.Fire(build_db)

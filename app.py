@@ -45,8 +45,12 @@ def stop_es_container():
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, stop_es_container)
-    # First, start elasticsearch container
-    docker_client.containers.run('chaopli/es-ik-tripitakas', detach=True)
+    # First try building the es-ik-tripitakas docker image
+    print('Try building es-ik-tripitakas image')
+    (image, obj) = docker_client.images.build(path='./es-ik')
+    # Second, start elasticsearch container
+    print('Try running es-ik-tripitakas image')
+    docker_client.containers.run(image, detach=True)
     print('Building elasticsearch index from ocr files')
     build_db()
 

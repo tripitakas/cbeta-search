@@ -1,0 +1,3 @@
+[submodule "BM_u8"]
+	path = BM_u8
+	url = https://github.com/mahawu/BM_u8

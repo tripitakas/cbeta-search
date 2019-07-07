@@ -5,6 +5,7 @@
 import re
 import sys
 import json
+import time
 from os import path
 from glob2 import glob
 from datetime import datetime
@@ -14,8 +15,8 @@ from rare import format_rare
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ElasticsearchException
 
-BM_PATH = r'/home/sm/cbeta/BM_u8'           # BM_u8所在路径
-TXT_PATH = r'/home/sm/cbeta/BM_u8/T/T01'    # 当前加工索引的路径
+BM_PATH = r'./BM_u8'           # BM_u8所在路径
+TXT_PATH = BM_PATH + r'/T/T01'    # 当前加工索引的路径
 
 
 def junk_filter(txt):
@@ -106,6 +107,9 @@ def build_db(index='cb4ocr-ik', source=TXT_PATH, mode='create', split='ik'):
     :param split: 中文分词器的名称，如'ik'或'jieba'，默认不采用任何分词
     """
     es = Elasticsearch()
+    while not es.ping():
+        print("ES not up yet, retrying after 1 second")
+        time.sleep(1)
 
     if mode == 'create':
         es.indices.delete(index=index, ignore=[400, 404])

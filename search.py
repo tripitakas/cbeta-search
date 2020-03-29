@@ -97,14 +97,14 @@ def index_page_codes(index, fn, base_dir=BM_PATH):
         print('%s error pages\n%s' % (len(errors), errors))
 
 
-def build_db(index='cb4ocr-ik', source=TXT_PATH, mode='create', split='ik'):
+def build_db(index='ik', source=TXT_PATH, mode='create', split='ik'):
     """ 基于CBETA文本创建索引，以便ocr寻找比对文本使用
     :param index: 索引名称
     :param source: 待加工的数据来源，有两种：
             1.目录：这种情况下直接导入目录中的文本数据
             2.json文件：这种情况下根据json文件中指定的page_code页码重新导入
     :param mode: 'create'表示新建，'update'表示更新
-    :param split: 中文分词器的名称，如'ik'或'jieba'，默认不采用任何分词
+    :param split: 中文分词器的名称，如'cb4ocr-ik'、'ik'或'jieba'，默认不采用任何分词
     """
     es = Elasticsearch()
     while not es.ping():

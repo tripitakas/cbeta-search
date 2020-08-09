@@ -1,8 +1,8 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Usage:
-# python -m run_tests.py --coverage
-# python -m run_tests.py -k test_case_name
+# python -m tests/run_tests.py --coverage
+# python -m tests/run_tests.py -k test_case_name
 
 import os
 import sys

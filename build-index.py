@@ -7,13 +7,15 @@ import sys
 import json
 import time
 from os import path
-from glob2 import glob
 from datetime import datetime
 from functools import partial
-from variant import normalize
-from rare import format_rare
+
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ElasticsearchException
+from glob2 import glob
+
+from cbindex.variant import normalize
+from cbindex.rare import format_rare
 
 BM_PATH = r'./BM_u8'           # BM_u8所在路径
 TXT_PATH = BM_PATH + r'/T/T01'    # 当前加工索引的路径
